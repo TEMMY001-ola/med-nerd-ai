@@ -96,3 +96,57 @@ app.post("/webhook", async (req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`MED NERD AI server running on port ${PORT}`);
 });
+app.get("/privacy-policy", (req, res) => {
+  res.status(200).send(`
+    <html>
+      <head>
+        <title>MED NERD AI Privacy Policy</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+      </head>
+      <body style="font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
+        <h1>MED NERD AI Privacy Policy</h1>
+
+        <p><strong>Last updated:</strong> October 7, 2026</p>
+
+        <p>
+          MED NERD AI is an educational WhatsApp-based tutoring service
+          operated by MED NERD. This Privacy Policy explains how information
+          received through the service is handled.
+        </p>
+
+        <h2>Information We Receive</h2>
+        <p>
+          When you interact with MED NERD AI through WhatsApp, we may receive
+          information such as your WhatsApp phone number, messages, and
+          information necessary to provide the requested educational service.
+        </p>
+
+        <h2>How We Use Information</h2>
+        <p>
+          Information is used to respond to messages, provide educational
+          assistance, operate and improve the service, and maintain the
+          security and reliability of the platform.
+        </p>
+
+        <h2>Data Sharing</h2>
+        <p>
+          We do not sell personal information. Information may be processed by
+          service providers and technology platforms necessary to operate the
+          MED NERD AI service, including WhatsApp and Meta's services.
+        </p>
+
+        <h2>Data Retention</h2>
+        <p>
+          Information is retained only for as long as reasonably necessary to
+          operate, maintain, and improve the service, or as required by law.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+          For privacy-related questions, contact MED NERD at
+          mednerd50@gmail.com.
+        </p>
+      </body>
+    </html>
+  `);
+});
