@@ -10,6 +10,7 @@ app.use(express.json({ limit: "1mb" }));
 // CONFIGURATION
 // ============================================================
 
+// Gemini model
 const GEMINI_MODEL = "gemini-3.8-flash";
 
 const GEMINI_URL =
@@ -32,13 +33,10 @@ const GEMINI_TIMEOUT_MS = 30000;
 // SIMPLE IN-MEMORY STORAGE
 // ============================================================
 
-// Prevent duplicate WhatsApp webhook processing
 const processedMessages = new Map();
 
-// Store short conversation history per WhatsApp user
 const conversations = new Map();
 
-// Rate-limit individual users
 const lastUserMessageTime = new Map();
 
 
@@ -94,67 +92,102 @@ app.get("/webhook", (req, res) => {
 // ============================================================
 
 async function sendWhatsAppMessage(to, message) {
+
   if (!process.env.PHONE_NUMBER_ID) {
-    throw new Error("PHONE_NUMBER_ID is not configured.");
+    throw new Error(
+      "PHONE_NUMBER_ID is not configured."
+    );
   }
 
   if (!process.env.WHATSAPP_TOKEN) {
-    throw new Error("WHATSAPP_TOKEN is not configured.");
+    throw new Error(
+      "WHATSAPP_TOKEN is not configured."
+    );
   }
+
+  console.log(
+    "Attempting WhatsApp message to recipient:",
+    to
+  );
+
+  console.log(
+    "Using WhatsApp Phone Number ID:",
+    process.env.PHONE_NUMBER_ID
+  );
 
   const url =
     `https://graph.facebook.com/v26.0/${process.env.PHONE_NUMBER_ID}/messages`;
 
-  const controller = new AbortController();
+  const controller =
+    new AbortController();
 
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, 30000);
+  const timeout =
+    setTimeout(() => {
+      controller.abort();
+    }, 30000);
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
 
-      headers: {
-        "Authorization":
-          `Bearer ${process.env.WHATSAPP_TOKEN}`,
+    const response =
+      await fetch(
+        url,
+        {
+          method: "POST",
 
-        "Content-Type":
-          "application/json"
-      },
+          headers: {
+            "Authorization":
+              `Bearer ${process.env.WHATSAPP_TOKEN}`,
 
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
+            "Content-Type":
+              "application/json"
+          },
 
-        to: to,
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
 
-        type: "text",
+            to: String(to),
 
-        text: {
-          body: message
+            type: "text",
+
+            text: {
+              body: String(message)
+            }
+          }),
+
+          signal: controller.signal
         }
-      }),
+      );
 
-      signal: controller.signal
-    });
-
-    const data = await response.json();
+    const data =
+      await response.json();
 
     console.log(
       "WhatsApp API response:",
-      JSON.stringify(data, null, 2)
+      JSON.stringify(
+        data,
+        null,
+        2
+      )
     );
 
     if (!response.ok) {
+
       throw new Error(
         `WhatsApp API error: ${JSON.stringify(data)}`
       );
     }
 
+    console.log(
+      "WhatsApp message sent successfully to:",
+      to
+    );
+
     return data;
 
   } finally {
+
     clearTimeout(timeout);
+
   }
 }
 
@@ -164,7 +197,9 @@ async function sendWhatsAppMessage(to, message) {
 // ============================================================
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(
+    resolve => setTimeout(resolve, ms)
+  );
 }
 
 
@@ -180,10 +215,13 @@ function randomJitter(maxMs = 1000) {
 
 
 // ============================================================
-// GEMINI REQUEST WITH RETRIES + TIMEOUT
+// GEMINI REQUEST WITH RETRIES
 // ============================================================
 
-async function askGemini(userMessage, history) {
+async function askGemini(
+  userMessage,
+  history
+) {
 
   if (!process.env.GEMINI_API_KEY) {
     throw new Error(
@@ -218,7 +256,7 @@ async function askGemini(userMessage, history) {
 
 
       // --------------------------------------------------------
-      // ADD SHORT CONVERSATION HISTORY
+      // CONVERSATION HISTORY
       // --------------------------------------------------------
 
       for (const item of history) {
@@ -232,11 +270,12 @@ async function askGemini(userMessage, history) {
             }
           ]
         });
+
       }
 
 
       // --------------------------------------------------------
-      // ADD CURRENT USER MESSAGE
+      // CURRENT USER MESSAGE
       // --------------------------------------------------------
 
       contents.push({
@@ -250,30 +289,35 @@ async function askGemini(userMessage, history) {
       });
 
 
-      const response = await fetch(
-        GEMINI_URL,
-        {
-          method: "POST",
+      // --------------------------------------------------------
+      // GEMINI REQUEST
+      // --------------------------------------------------------
 
-          headers: {
-            "Content-Type":
-              "application/json",
+      const response =
+        await fetch(
+          GEMINI_URL,
+          {
+            method: "POST",
 
-            "x-goog-api-key":
-              process.env.GEMINI_API_KEY
-          },
+            headers: {
+              "Content-Type":
+                "application/json",
 
-          body: JSON.stringify({
+              "x-goog-api-key":
+                process.env.GEMINI_API_KEY
+            },
 
-            system_instruction: {
-              parts: [
-                {
-                  text: `
+            body: JSON.stringify({
+
+              system_instruction: {
+                parts: [
+                  {
+                    text: `
 You are MED NERD AI, an educational AI assistant created by MED NERD.
 
 Your primary audience is students and aspiring university students.
 
-Your job is to provide clear, accurate, useful educational assistance.
+Your job is to provide clear, accurate and useful educational assistance.
 
 GENERAL RULES:
 - Answer the user's actual question directly.
@@ -289,7 +333,7 @@ MEDICAL AND HEALTH QUESTIONS:
 - Provide educational information.
 - Do not pretend to diagnose the user.
 - Do not present uncertain information as certain.
-- For emergencies, severe symptoms, diagnosis, or treatment decisions, advise the user to seek appropriate professional medical care.
+- For emergencies, severe symptoms, diagnosis or treatment decisions, advise the user to seek appropriate professional medical care.
 - Do not replace a qualified healthcare professional.
 
 ACADEMIC QUESTIONS:
@@ -298,27 +342,22 @@ ACADEMIC QUESTIONS:
 - Help the student understand how to solve similar questions independently.
 
 MED NERD AI should be professional, helpful, respectful and student-friendly.
-                  `
-                }
-              ]
-            },
+                    `
+                  }
+                ]
+              },
 
+              contents: contents,
 
-            contents: contents,
+              generationConfig: {
+                maxOutputTokens: 1000
+              }
 
+            }),
 
-            generationConfig: {
-
-              // Keep responses practical for WhatsApp
-              maxOutputTokens: 1000
-
-            }
-
-          }),
-
-          signal: controller.signal
-        }
-      );
+            signal: controller.signal
+          }
+        );
 
 
       const data =
@@ -327,7 +366,11 @@ MED NERD AI should be professional, helpful, respectful and student-friendly.
 
       console.log(
         "Gemini API response:",
-        JSON.stringify(data, null, 2)
+        JSON.stringify(
+          data,
+          null,
+          2
+        )
       );
 
 
@@ -339,28 +382,37 @@ MED NERD AI should be professional, helpful, respectful and student-friendly.
 
         const answer =
           data.candidates?.[0]?.content?.parts
-            ?.map(part => part.text || "")
+            ?.map(
+              part => part.text || ""
+            )
             .join("")
             .trim();
 
 
         if (!answer) {
+
           throw new Error(
             "Gemini returned no text answer."
           );
+
         }
 
 
-        // Keep WhatsApp response within our limit
+        console.log(
+          "Gemini generated a successful answer."
+        );
+
+
         return answer.slice(
           0,
           MAX_AI_RESPONSE_LENGTH
         );
+
       }
 
 
       // --------------------------------------------------------
-      // TRANSIENT ERRORS
+      // RETRYABLE ERRORS
       // --------------------------------------------------------
 
       const retryableStatusCodes = [
@@ -380,7 +432,6 @@ MED NERD AI should be professional, helpful, respectful and student-friendly.
         attempt < MAX_GEMINI_ATTEMPTS
       ) {
 
-        // 2s, 4s, 8s + random jitter
         const baseDelay =
           Math.pow(2, attempt) * 1000;
 
@@ -400,12 +451,9 @@ MED NERD AI should be professional, helpful, respectful and student-friendly.
         await sleep(delay);
 
         continue;
+
       }
 
-
-      // --------------------------------------------------------
-      // NON-RETRYABLE ERROR
-      // --------------------------------------------------------
 
       throw new Error(
         `Gemini API error ${response.status}: ` +
@@ -425,7 +473,6 @@ MED NERD AI should be professional, helpful, respectful and student-friendly.
       );
 
 
-      // Retry timeout/network errors
       if (
         attempt < MAX_GEMINI_ATTEMPTS
       ) {
@@ -449,6 +496,7 @@ MED NERD AI should be professional, helpful, respectful and student-friendly.
         await sleep(delay);
 
         continue;
+
       }
 
 
@@ -460,6 +508,7 @@ MED NERD AI should be professional, helpful, respectful and student-friendly.
       clearTimeout(timeout);
 
     }
+
   }
 
 
@@ -476,10 +525,12 @@ MED NERD AI should be professional, helpful, respectful and student-friendly.
 function getConversation(userId) {
 
   if (!conversations.has(userId)) {
+
     conversations.set(
       userId,
       []
     );
+
   }
 
   return conversations.get(userId);
@@ -506,7 +557,6 @@ function saveConversation(
   });
 
 
-  // Keep only recent messages
   while (
     history.length >
     MAX_HISTORY_MESSAGES
@@ -530,10 +580,13 @@ function isDuplicateMessage(messageId) {
 
 
   if (
-    processedMessages.has(messageId)
+    processedMessages.has(
+      messageId
+    )
   ) {
 
     return true;
+
   }
 
 
@@ -564,10 +617,12 @@ function isRateLimited(userId) {
 
   if (
     last &&
-    now - last < USER_RATE_LIMIT_MS
+    now - last <
+    USER_RATE_LIMIT_MS
   ) {
 
     return true;
+
   }
 
 
@@ -591,9 +646,11 @@ setInterval(() => {
     Date.now();
 
 
-  // Remove duplicate IDs older than 1 hour
   for (
-    const [id, timestamp]
+    const [
+      id,
+      timestamp
+    ]
     of processedMessages
   ) {
 
@@ -605,12 +662,15 @@ setInterval(() => {
       processedMessages.delete(id);
 
     }
+
   }
 
 
-  // Remove inactive user rate-limit records
   for (
-    const [userId, timestamp]
+    const [
+      userId,
+      timestamp
+    ]
     of lastUserMessageTime
   ) {
 
@@ -624,6 +684,7 @@ setInterval(() => {
       );
 
     }
+
   }
 
 }, 10 * 60 * 1000);
@@ -675,6 +736,7 @@ app.post(
         );
 
         return;
+
       }
 
 
@@ -688,6 +750,21 @@ app.post(
 
       const text =
         message.text?.body;
+
+
+      // --------------------------------------------------------
+      // IMPORTANT RECIPIENT DIAGNOSTICS
+      // --------------------------------------------------------
+
+      console.log(
+        "WhatsApp sender number:",
+        from
+      );
+
+      console.log(
+        "Configured WhatsApp Phone Number ID:",
+        process.env.PHONE_NUMBER_ID
+      );
 
 
       // --------------------------------------------------------
@@ -705,6 +782,7 @@ app.post(
         );
 
         return;
+
       }
 
 
@@ -719,6 +797,7 @@ app.post(
         );
 
         return;
+
       }
 
 
@@ -727,7 +806,6 @@ app.post(
 
 
       if (!cleanText) {
-
         return;
       }
 
@@ -743,11 +821,11 @@ app.post(
 
         await sendWhatsAppMessage(
           from,
-
           "Your message is too long for one request. Please shorten it and send it again."
         );
 
         return;
+
       }
 
 
@@ -761,11 +839,11 @@ app.post(
 
         await sendWhatsAppMessage(
           from,
-
           "Please give MED NERD AI a few seconds before sending another message."
         );
 
         return;
+
       }
 
 
@@ -809,7 +887,6 @@ app.post(
         cleanText
       );
 
-
       saveConversation(
         from,
         "model",
@@ -818,8 +895,14 @@ app.post(
 
 
       // --------------------------------------------------------
-      // SEND ANSWER
+      // SEND AI ANSWER
       // --------------------------------------------------------
+
+      console.log(
+        "Attempting to send AI reply to:",
+        from
+      );
+
 
       await sendWhatsAppMessage(
         from,
@@ -841,7 +924,7 @@ app.post(
 
 
       // --------------------------------------------------------
-      // FRIENDLY FALLBACK
+      // FALLBACK
       // --------------------------------------------------------
 
       try {
@@ -858,6 +941,12 @@ app.post(
           message?.from;
 
 
+        console.log(
+          "Fallback recipient:",
+          from
+        );
+
+
         if (from) {
 
           await sendWhatsAppMessage(
@@ -870,12 +959,10 @@ app.post(
           console.log(
             "Fallback message sent."
           );
+
         }
 
-
-      } catch (
-        fallbackError
-      ) {
+      } catch (fallbackError) {
 
         console.error(
           "Fallback message failed:",
@@ -883,7 +970,9 @@ app.post(
         );
 
       }
+
     }
+
   }
 );
 
@@ -913,7 +1002,6 @@ app.get(
 
         </head>
 
-
         <body
           style="
             font-family: Arial, sans-serif;
@@ -933,13 +1021,11 @@ app.get(
             October 7, 2026
           </p>
 
-
           <p>
             MED NERD AI is an educational
             WhatsApp-based tutoring service
             operated by MED NERD.
           </p>
-
 
           <h2>
             Information We Receive
@@ -954,7 +1040,6 @@ app.get(
             the requested educational service.
           </p>
 
-
           <h2>
             How We Use Information
           </h2>
@@ -967,7 +1052,6 @@ app.get(
             security and reliability of the
             platform.
           </p>
-
 
           <h2>
             Data Sharing
@@ -982,7 +1066,6 @@ app.get(
             WhatsApp and Meta's services.
           </p>
 
-
           <h2>
             Data Retention
           </h2>
@@ -993,7 +1076,6 @@ app.get(
             to operate, maintain, and improve
             the service, or as required by law.
           </p>
-
 
           <h2>
             Contact
@@ -1010,6 +1092,7 @@ app.get(
       </html>
 
     `);
+
   }
 );
 
@@ -1029,3 +1112,20 @@ app.listen(
 
   }
 );
+
+After replacing "server.js"
+
+Commit it with:
+
+Fix WhatsApp recipient diagnostics and Gemini retry handling
+
+Then deploy on Render.
+
+Do not change your environment variables. Do not paste your API keys into the code.
+
+After deployment finishes, send one WhatsApp message to MED NERD AI. Then the crucial Render log will contain:
+
+WhatsApp sender number: ...
+Attempting to send AI reply to: ...
+
+That will tell us exactly which number your code is giving Meta.
