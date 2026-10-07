@@ -1,0 +1,12 @@
+{
+  "name": "med-nerd-ai",
+  "version": "1.0.0",
+  "description": "MED NERD AI WhatsApp tutoring backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
