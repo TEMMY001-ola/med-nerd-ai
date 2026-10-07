@@ -55,6 +55,75 @@ async function sendWhatsAppMessage(to, message) {
   return data;
 }
 
+// Ask OpenAI for an answer
+async function askOpenAI(userMessage) {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not configured.");
+  }
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "gpt-5.6-terra",
+      instructions: `
+You are MED NERD AI, an educational AI assistant created by MED NERD.
+
+Your primary audience is students and aspiring university students.
+Give clear, accurate, educational answers.
+
+For medical and health-related questions:
+- Explain concepts in a student-friendly but scientifically accurate way.
+- Do not pretend to diagnose a person.
+- Encourage professional medical care when a question involves symptoms, emergencies, diagnosis, or treatment.
+
+For academic questions:
+- Teach the concept rather than merely giving an answer.
+- Use examples when useful.
+- Keep responses reasonably concise for WhatsApp.
+- Use simple formatting that displays well on WhatsApp.
+
+Do not claim to be a human doctor or medical professional.
+      `,
+      input: userMessage
+    })
+  });
+
+  const data = await response.json();
+
+  console.log("OpenAI API response:", JSON.stringify(data, null, 2));
+
+  if (!response.ok) {
+    throw new Error(`OpenAI API error: ${JSON.stringify(data)}`);
+  }
+
+  // Extract text from the Responses API output
+  let answer = "";
+
+  if (typeof data.output_text === "string") {
+    answer = data.output_text;
+  } else if (Array.isArray(data.output)) {
+    for (const item of data.output) {
+      if (item.type === "message" && Array.isArray(item.content)) {
+        for (const content of item.content) {
+          if (content.type === "output_text" && content.text) {
+            answer += content.text;
+          }
+        }
+      }
+    }
+  }
+
+  if (!answer.trim()) {
+    throw new Error("OpenAI returned no text answer.");
+  }
+
+  return answer.trim();
+}
+
 // WhatsApp incoming messages
 app.post("/webhook", async (req, res) => {
   console.log("WhatsApp webhook received:");
@@ -82,20 +151,20 @@ app.post("/webhook", async (req, res) => {
 
     console.log(`Message from ${from}: ${text}`);
 
-    await sendWhatsAppMessage(
-      from,
-      "Hello! 👋 MED NERD AI is online. Your message was received successfully."
-    );
+    // Send the user's question to the AI
+    const aiReply = await askOpenAI(text);
 
-    console.log("Reply sent successfully.");
+    console.log("AI reply:", aiReply);
+
+    // Send the AI's answer back through WhatsApp
+    await sendWhatsAppMessage(from, aiReply);
+
+    console.log("AI reply sent successfully.");
   } catch (error) {
-    console.error("Failed to send WhatsApp reply:", error);
+    console.error("Failed to process WhatsApp message:", error);
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`MED NERD AI server running on port ${PORT}`);
-});
 app.get("/privacy-policy", (req, res) => {
   res.status(200).send(`
     <html>
@@ -149,4 +218,8 @@ app.get("/privacy-policy", (req, res) => {
       </body>
     </html>
   `);
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`MED NERD AI server running on port ${PORT}`);
 });
