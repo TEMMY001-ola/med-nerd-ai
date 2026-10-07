@@ -5,6 +5,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// Home
 app.get("/", (req, res) => {
   res.status(200).send("MED NERD AI is running!");
 });
@@ -23,8 +24,45 @@ app.get("/webhook", (req, res) => {
   console.log("Webhook verification failed");
   return res.sendStatus(403);
 });
+
+// Send a WhatsApp text message
+async function sendWhatsAppMessage(to, message) {
+  const url = `https://graph.facebook.com/v26.0/${process.env.PHONE_NUMBER_ID}/messages`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: to,
+      type: "text",
+      text: {
+        body: message
+      }
+    })
+  });
+
+  const data = await response.json();
+
+  console.log(
+    "WhatsApp API response:",
+    JSON.stringify(data, null, 2)
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `WhatsApp API error: ${JSON.stringify(data)}`
+    );
+  }
+
+  return data;
+}
+
 // Ask Gemini for an answer
-async function askOpenAI(userMessage) {
+async function askGemini(userMessage) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY is not configured.");
   }
@@ -51,7 +89,7 @@ Give clear, accurate and educational answers.
 For medical and health-related questions:
 - Explain concepts in a student-friendly but scientifically accurate way.
 - Do not pretend to diagnose a person.
-- Encourage professional medical care when a question involves symptoms, emergencies, diagnosis or treatment.
+- Encourage professional medical care when a question involves symptoms, emergencies, diagnosis, or treatment.
 
 For academic questions:
 - Teach the concept rather than merely giving an answer.
@@ -80,15 +118,20 @@ Do not claim to be a human doctor or medical professional.
 
   const data = await response.json();
 
-  console.log("Gemini API response:", JSON.stringify(data, null, 2));
+  console.log(
+    "Gemini API response:",
+    JSON.stringify(data, null, 2)
+  );
 
   if (!response.ok) {
-    throw new Error(`Gemini API error: ${JSON.stringify(data)}`);
+    throw new Error(
+      `Gemini API error: ${JSON.stringify(data)}`
+    );
   }
 
   const answer =
     data.candidates?.[0]?.content?.parts
-      ?.map(part => part.text || "")
+      ?.map((part) => part.text || "")
       .join("")
       .trim();
 
@@ -97,77 +140,6 @@ Do not claim to be a human doctor or medical professional.
   }
 
   return answer;
-}
-
-  const url = `https://graph.facebook.com/v26.0/${process.env.PHONE_NUMBER_ID}/messages`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: to,
-      type: "text",
-      text: {
-        body: message
-      }
-    })
-  });
-
-  
-Your primary audience is students and aspiring university students.
-Give clear, accurate, educational answers.
-
-For medical and health-related questions:
-- Explain concepts in a student-friendly but scientifically accurate way.
-- Do not pretend to diagnose a person.
-- Encourage professional medical care when a question involves symptoms, emergencies, diagnosis, or treatment.
-
-For academic questions:
-- Teach the concept rather than merely giving an answer.
-- Use examples when useful.
-- Keep responses reasonably concise for WhatsApp.
-- Use simple formatting that displays well on WhatsApp.
-
-Do not claim to be a human doctor or medical professional.
-      `,
-      input: userMessage
-    })
-  });
-
-  const data = await response.json();
-
-  console.log("OpenAI API response:", JSON.stringify(data, null, 2));
-
-  if (!response.ok) {
-    throw new Error(`OpenAI API error: ${JSON.stringify(data)}`);
-  }
-
-  // Extract text from the Responses API output
-  let answer = "";
-
-  if (typeof data.output_text === "string") {
-    answer = data.output_text;
-  } else if (Array.isArray(data.output)) {
-    for (const item of data.output) {
-      if (item.type === "message" && Array.isArray(item.content)) {
-        for (const content of item.content) {
-          if (content.type === "output_text" && content.text) {
-            answer += content.text;
-          }
-        }
-      }
-    }
-  }
-
-  if (!answer.trim()) {
-    throw new Error("OpenAI returned no text answer.");
-  }
-
-  return answer.trim();
 }
 
 // WhatsApp incoming messages
@@ -197,20 +169,24 @@ app.post("/webhook", async (req, res) => {
 
     console.log(`Message from ${from}: ${text}`);
 
-    // Send the user's question to the AI
-    const aiReply = await askOpenAI(text);
+    // Send the user's message to Gemini
+    const aiReply = await askGemini(text);
 
     console.log("AI reply:", aiReply);
 
-    // Send the AI's answer back through WhatsApp
+    // Send Gemini's answer back to WhatsApp
     await sendWhatsAppMessage(from, aiReply);
 
     console.log("AI reply sent successfully.");
   } catch (error) {
-    console.error("Failed to process WhatsApp message:", error);
+    console.error(
+      "Failed to process WhatsApp message:",
+      error
+    );
   }
 });
 
+// Privacy Policy
 app.get("/privacy-policy", (req, res) => {
   res.status(200).send(`
     <html>
@@ -225,8 +201,7 @@ app.get("/privacy-policy", (req, res) => {
 
         <p>
           MED NERD AI is an educational WhatsApp-based tutoring service
-          operated by MED NERD. This Privacy Policy explains how information
-          received through the service is handled.
+          operated by MED NERD.
         </p>
 
         <h2>Information We Receive</h2>
@@ -252,8 +227,8 @@ app.get("/privacy-policy", (req, res) => {
 
         <h2>Data Retention</h2>
         <p>
-          Information is retained only for as long as reasonably necessary to
-          operate, maintain, and improve the service, or as required by law.
+          Information is retained only for as long as reasonably necessary
+          to operate, maintain, and improve the service, or as required by law.
         </p>
 
         <h2>Contact</h2>
@@ -266,6 +241,7 @@ app.get("/privacy-policy", (req, res) => {
   `);
 });
 
+// Start server
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`MED NERD AI server running on port ${PORT}`);
 });
