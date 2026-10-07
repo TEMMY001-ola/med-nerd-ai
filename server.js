@@ -23,9 +23,82 @@ app.get("/webhook", (req, res) => {
   console.log("Webhook verification failed");
   return res.sendStatus(403);
 });
+// Ask Gemini for an answer
+async function askOpenAI(userMessage) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not configured.");
+  }
 
-// Send a WhatsApp text message
-async function sendWhatsAppMessage(to, message) {
+  const response = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": process.env.GEMINI_API_KEY
+      },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [
+            {
+              text: `
+You are MED NERD AI, an educational AI assistant created by MED NERD.
+
+Your primary audience is students and aspiring university students.
+
+Give clear, accurate and educational answers.
+
+For medical and health-related questions:
+- Explain concepts in a student-friendly but scientifically accurate way.
+- Do not pretend to diagnose a person.
+- Encourage professional medical care when a question involves symptoms, emergencies, diagnosis or treatment.
+
+For academic questions:
+- Teach the concept rather than merely giving an answer.
+- Use examples when useful.
+- Keep responses reasonably concise for WhatsApp.
+- Use simple formatting that displays well on WhatsApp.
+
+Do not claim to be a human doctor or medical professional.
+              `
+            }
+          ]
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: userMessage
+              }
+            ]
+          }
+        ]
+      })
+    }
+  );
+
+  const data = await response.json();
+
+  console.log("Gemini API response:", JSON.stringify(data, null, 2));
+
+  if (!response.ok) {
+    throw new Error(`Gemini API error: ${JSON.stringify(data)}`);
+  }
+
+  const answer =
+    data.candidates?.[0]?.content?.parts
+      ?.map(part => part.text || "")
+      .join("")
+      .trim();
+
+  if (!answer) {
+    throw new Error("Gemini returned no text answer.");
+  }
+
+  return answer;
+}
+
   const url = `https://graph.facebook.com/v26.0/${process.env.PHONE_NUMBER_ID}/messages`;
 
   const response = await fetch(url, {
@@ -44,34 +117,7 @@ async function sendWhatsAppMessage(to, message) {
     })
   });
 
-  const data = await response.json();
-
-  console.log("WhatsApp API response:", JSON.stringify(data, null, 2));
-
-  if (!response.ok) {
-    throw new Error(`WhatsApp API error: ${JSON.stringify(data)}`);
-  }
-
-  return data;
-}
-
-// Ask OpenAI for an answer
-async function askOpenAI(userMessage) {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not configured.");
-  }
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-5.6-terra",
-      instructions: `
-You are MED NERD AI, an educational AI assistant created by MED NERD.
-
+  
 Your primary audience is students and aspiring university students.
 Give clear, accurate, educational answers.
 
